@@ -5,6 +5,9 @@ import React, { useState } from 'react';
 import { useRelay } from '@/context/RelayContext';
 import { TEAM_USERS, UserProfile } from '@/types/relaymap';
 import SourceVault from '@/components/SourceVault';
+import EvidenceLedger from '@/components/EvidenceLedger';
+import FinalHandover from '@/components/FinalHandover';
+import WorkflowGuide from '@/components/WorkflowGuide';
 import {
   ShieldCheck,
   FileText,
@@ -12,7 +15,6 @@ import {
   AlertTriangle,
   Clock,
   LogOut,
-  Users,
   ArrowRight,
   Lock,
 } from 'lucide-react';
@@ -24,7 +26,7 @@ export default function RelayMapApp() {
   // 1. IF NOT LOGGED IN: SHOW ROLE LOGIN PAGE
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-6">
+      <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-6 text-slate-900">
         <div className="max-w-4xl w-full bg-white border border-slate-200 rounded-xl shadow-sm p-8">
           <div className="flex items-center justify-between border-b border-slate-200 pb-6 mb-6">
             <div>
@@ -89,9 +91,9 @@ export default function RelayMapApp() {
 
   // 2. LOGGED-IN WORKSPACE SHELL
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900">
       {/* Top Navbar */}
-      <header className="bg-white border-b border-slate-200 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+      <header className="bg-white border-b border-slate-200 px-6 py-4 flex flex-wrap items-center justify-between gap-4 print:hidden">
         <div className="flex items-center gap-3">
           <div className="bg-slate-900 text-white font-bold px-3 py-1.5 rounded-lg text-sm">
             RELAYMAP
@@ -154,8 +156,10 @@ export default function RelayMapApp() {
       </header>
 
       {/* Main Content Area */}
-      <main className="max-w-6xl w-full mx-auto p-6 flex-1">
-        
+      <main className="max-w-6xl w-full mx-auto p-6 flex-1 space-y-6">
+        {/* Dynamic Workflow Guide Banner & Next Step Button */}
+        <WorkflowGuide activeTab={activeTab} setActiveTab={setActiveTab} />
+
         {/* TAB 1: OVERVIEW */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
@@ -266,10 +270,14 @@ export default function RelayMapApp() {
                     </div>
 
                     <div className="text-right">
-                      <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline cursor-pointer">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('ledger')}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline cursor-pointer"
+                      >
                         <FileText className="w-3.5 h-3.5" />
                         SOURCE: {item.sourceName} / {item.locator}
-                      </span>
+                      </button>
                       <p className="text-xs text-slate-400 mt-1">
                         Review State: {item.reviewerState}
                       </p>
@@ -284,18 +292,11 @@ export default function RelayMapApp() {
         {/* TAB 2: SOURCE VAULT */}
         {activeTab === 'vault' && <SourceVault />}
 
-        {/* FALLBACK FOR UPCOMING TABS */}
-        {activeTab !== 'overview' && activeTab !== 'vault' && (
-          <div className="bg-white border border-slate-200 rounded-xl p-12 text-center">
-            <Users className="w-10 h-10 text-blue-600 mx-auto mb-3" />
-            <h3 className="text-lg font-bold text-slate-900">
-              Tab &ldquo;{activeTab.toUpperCase()}&rdquo; Ready for Next Build Step
-            </h3>
-            <p className="text-sm text-slate-600 mt-1">
-              Next up: Part 3 (AI Extraction & Rule Validator) and Part 4 (Evidence Ledger).
-            </p>
-          </div>
-        )}
+        {/* TAB 3: EVIDENCE LEDGER */}
+        {activeTab === 'ledger' && <EvidenceLedger />}
+
+        {/* TAB 4: FINAL HANDOVER */}
+        {activeTab === 'handover' && <FinalHandover />}
       </main>
     </div>
   );
