@@ -2,6 +2,8 @@
 
 export type UserRole = 'CONTRIBUTOR' | 'NEW_OWNER' | 'REVIEWER' | 'ACCESS_OWNER';
 
+export type AppTab = 'overview' | 'vault' | 'ledger' | 'handover';
+
 export type ClaimCategory = 'Decision' | 'Active work' | 'Risk' | 'Next Action';
 
 export type VerificationStatus = 'VERIFIED' | 'IN_PROGRESS' | 'UNVERIFIED';
@@ -17,6 +19,15 @@ export interface UserProfile {
   title: string;
   description: string;
   allowedScopes: AccessScope[];
+  allowedTabs: AppTab[];
+  defaultTab: AppTab;
+}
+
+export interface DocumentSection {
+  id: string;
+  title: string;
+  summary: string;
+  locator: string; // e.g., "Pages 1-2" or "Section 2.1"
 }
 
 export interface SourceDocument {
@@ -27,6 +38,11 @@ export interface SourceDocument {
   uploadedAt: string;
   accessScope: AccessScope;
   rawContent: string;
+  fileUrl?: string; // Browser Blob URL to open the actual PDF/file directly
+  base64Data?: string;
+  mimeType?: string;
+  aiSummary?: string; // General summary of entire document (Editable)
+  sections?: DocumentSection[]; // Multi-part breakdown with locators (Editable)
 }
 
 export interface EvidenceRecord {
@@ -36,7 +52,7 @@ export interface EvidenceRecord {
   owner: string;
   sourceId: string;
   sourceName: string;
-  locator: string; // e.g., "p. 3" or "item 14"
+  locator: string;
   excerpt: string;
   status: VerificationStatus;
   reviewerState: ReviewerState;
@@ -46,111 +62,50 @@ export interface EvidenceRecord {
 
 export const TEAM_USERS: UserProfile[] = [
   {
-    id: 'u1',
-    name: 'Aurelius Godad',
-    role: 'REVIEWER',
-    title: 'Project Lead (Reviewer)',
-    description: 'Reviews ownership gaps, conflicting facts, and approves the final handover.',
-    allowedScopes: ['PUBLIC_TEAM', 'CORE_LEAD_ONLY', 'ADMIN_CONFIDENTIAL'],
-  },
-  {
     id: 'u2',
     name: 'Vihaan Kunder',
     role: 'CONTRIBUTOR',
-    title: 'Departing Member (Contributor)',
-    description: 'Uploads authorised files and transfers decisions, tasks, and context before exit.',
+    title: 'Departing Member (Contributor — Steps 1 to 3 Only)',
+    description:
+      'Uploads project PDFs/files, generates AI summaries & claims, and edits vague items. Restricted from Final Handover page.',
     allowedScopes: ['PUBLIC_TEAM', 'CORE_LEAD_ONLY'],
+    allowedTabs: ['overview', 'vault', 'ledger'],
+    defaultTab: 'vault',
+  },
+  {
+    id: 'u1',
+    name: 'Aurelius Godad',
+    role: 'REVIEWER',
+    title: 'Project Lead (Reviewer & Approver)',
+    description:
+      'Reviews and edits AI summaries and claims in the Evidence Ledger, and approves the final handover package for Om.',
+    allowedScopes: ['PUBLIC_TEAM', 'CORE_LEAD_ONLY', 'ADMIN_CONFIDENTIAL'],
+    allowedTabs: ['overview', 'vault', 'ledger', 'handover'],
+    defaultTab: 'ledger',
   },
   {
     id: 'u3',
     name: 'Om Gole',
     role: 'NEW_OWNER',
-    title: 'Incoming Member (New Owner)',
-    description: 'Receives the approved, role-filtered continuation plan and next actions.',
+    title: 'Incoming Member (Newcomer — Step 4 Only)',
+    description:
+      'Strictly restricted to the Final Handover page, and only after Aurelius or Admin approves the handover package.',
     allowedScopes: ['PUBLIC_TEAM'],
+    allowedTabs: ['handover'],
+    defaultTab: 'handover',
   },
   {
     id: 'u4',
     name: 'Org Admin',
     role: 'ACCESS_OWNER',
-    title: 'Organisation Admin (Access Owner)',
-    description: 'Enforces access scopes so confidential material is shared only with authorised roles.',
+    title: 'Organisation Admin (Security & Access Governance)',
+    description:
+      'Controls confidentiality scopes (PUBLIC_TEAM vs CORE_LEAD_ONLY vs ADMIN_CONFIDENTIAL) to restrict what Om or Vihaan can see.',
     allowedScopes: ['PUBLIC_TEAM', 'CORE_LEAD_ONLY', 'ADMIN_CONFIDENTIAL'],
+    allowedTabs: ['overview', 'vault', 'ledger', 'handover'],
+    defaultTab: 'overview',
   },
 ];
 
-export const INITIAL_SOURCES: SourceDocument[] = [
-  {
-    id: 'src-1',
-    fileName: 'Design_Notes.pdf',
-    fileType: 'PDF',
-    owner: 'Vihaan Kunder',
-    uploadedAt: '2026-10-28',
-    accessScope: 'PUBLIC_TEAM',
-    rawContent:
-      '[Page 3] Controller Trade-off Study: After testing Arduino Mega and ESP32, the prototype controller selected is ESP32 due to built-in Wi-Fi/BLE telemetry support.Final chassis dimensions still require confirmation with mechanical lead.',
-  },
-  {
-    id: 'src-2',
-    fileName: 'Task_Board_Export.csv',
-    fileType: 'CSV',
-    owner: 'Vihaan Kunder',
-    uploadedAt: '2026-10-30',
-    accessScope: 'PUBLIC_TEAM',
-    rawContent:
-      'Item 14,Telemetry integration,IN_PROGRESS,Owner: Firmware lead,Blocked on packet schema v2.\nItem 18,Confirm final chassis dimensions,OPEN,Owner: Mechanical lead.',
-  },
-  {
-    id: 'src-3',
-    fileName: 'Test_Log_Latest.md',
-    fileType: 'MARKDOWN',
-    owner: 'Aurelius Godad',
-    uploadedAt: '2026-11-01',
-    accessScope: 'CORE_LEAD_ONLY',
-    rawContent:
-      '## Latest Entry\nBench test completed at 40% load. WARNING: Battery runtime has not been validated in a full field test. Must run and record a full battery test before deployment.',
-  },
-];
-
-export const INITIAL_EVIDENCE: EvidenceRecord[] = [
-  {
-    id: 'ev-1',
-    category: 'Decision',
-    claim: 'Prototype controller selected: ESP32.',
-    owner: 'Hardware Team',
-    sourceId: 'src-1',
-    sourceName: 'Design Notes',
-    locator: 'p. 3',
-    excerpt: 'After testing Arduino Mega and ESP32, the prototype controller selected is ESP32 due to built-in Wi-Fi/BLE telemetry support.',
-    status: 'VERIFIED',
-    reviewerState: 'APPROVED',
-    accessScope: 'PUBLIC_TEAM',
-  },
-  {
-    id: 'ev-2',
-    category: 'Active work',
-    claim: 'Telemetry integration is still open. Owner: Firmware lead.',
-    owner: 'Firmware lead',
-    sourceId: 'src-2',
-    sourceName: 'Task Board',
-    locator: 'item 14',
-    excerpt: 'Item 14,Telemetry integration,IN_PROGRESS,Owner: Firmware lead,Blocked on packet schema v2.',
-    status: 'IN_PROGRESS',
-    reviewerState: 'PENDING',
-    accessScope: 'PUBLIC_TEAM',
-  },
-  {
-    id: 'ev-3',
-    category: 'Risk',
-    claim: 'Battery runtime has not been validated in a full test.',
-    owner: 'Unassigned',
-    sourceId: 'src-3',
-    sourceName: 'Test Log',
-    locator: 'latest entry',
-    excerpt: 'WARNING: Battery runtime has not been validated in a full field test. Must run and record a full battery test before deployment.',
-    status: 'UNVERIFIED',
-    reviewerState: 'PENDING',
-    accessScope: 'CORE_LEAD_ONLY',
-    conflictNote: 'Missing assigned owner for critical pre-deployment test.',
-  },
-];
+export const INITIAL_SOURCES: SourceDocument[] = [];
+export const INITIAL_EVIDENCE: EvidenceRecord[] = [];

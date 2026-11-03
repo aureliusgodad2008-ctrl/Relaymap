@@ -1,135 +1,158 @@
 // src/app/api/extract/route.ts
 import { NextResponse } from 'next/server';
 import { CandidateClaim } from '@/utils/ruleValidator';
+import { DocumentSection } from '@/types/relaymap';
+
+export async function GET() {
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey || apiKey.trim() === '') {
+    return NextResponse.json({
+      live: false,
+      message:
+        'GEMINI_API_KEY not found. Put .env.local in your root relaymap folder and restart npm run dev.',
+    });
+  }
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: 'Reply with LIVE.' }] }],
+        }),
+      }
+    );
+
+    if (response.ok) {
+      return NextResponse.json({
+        live: true,
+        message: `LIVE: Gemini 3.5 Flash-Lite (${apiKey.slice(0, 6)}...) is connected and active!`,
+      });
+    } else {
+      const errData = await response.json();
+      return NextResponse.json({
+        live: false,
+        message: `Google API Error: ${errData?.error?.message || 'Invalid key'}`,
+      });
+    }
+  } catch (error: any) {
+    return NextResponse.json({
+      live: false,
+      message: `Network error: ${error.message}`,
+    });
+  }
+}
 
 export async function POST(request: Request) {
   try {
-    const { fileName, rawContent } = await request.json();
+    const { fileName, rawContent, base64Data, mimeType } = await request.json();
+    const apiKey = process.env.GEMINI_API_KEY;
 
-    if (!rawContent) {
+    if (!apiKey || apiKey.trim() === '') {
       return NextResponse.json(
-        { error: 'No source content provided for extraction.' },
+        { error: 'GEMINI_API_KEY is missing in .env.local.' },
         { status: 400 }
       );
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const systemInstruction = `You are RelayMap, an Evidence-First Project Handover AI.
+Carefully read the attached document ("${fileName}") and break it down so an incoming team member (Om Gole) can understand everything without confusion.
 
-    // 1. IF GEMINI_API_KEY IS PRESENT: Call Gemini Structured JSON Extraction
-    if (apiKey) {
-      const prompt = `You are RelayMap's AI Structured Extraction engine.
-Extract project handover claims from the following authorised document (${fileName}).
-Return ONLY a valid JSON array of objects with these exact keys:
-- "category": one of "Decision", "Active work", "Risk", or "Next Action"
-- "claim": a concise 1-sentence statement of the finding
-- "owner": the person or role responsible (or "Unassigned" if not stated)
-- "locator": the exact bracketed locator from the text (e.g. "p. 1", "item 2", "Section: Power Architecture / L1")
-- "excerpt": the exact supporting quote from the source text
+You must return ONLY a valid JSON object with these 3 exact keys:
+1. "summary": A comprehensive 3-to-5 sentence General Summary of the entire document explaining its core purpose, context, and overall conclusion.
+2. "sections": Divide the document into 3 to 6 logical parts/sections based on its contents. For each part, provide:
+   - "title": Clear name of that topic/section
+   - "summary": 2-to-3 sentence explanation of the most important points in that section
+   - "locator": Where in the document this part is taken from (e.g., "Page 1, Top", "Pages 2-3", "Section 2")
+3. "claims": Extract 4 to 7 concrete handover action items/findings across these categories: "Decision", "Active work", "Risk", or "Next Action". For each claim, provide:
+   - "category": "Decision" | "Active work" | "Risk" | "Next Action"
+   - "claim": Clear 1-sentence statement of the finding
+   - "owner": Person or role responsible (or "Unassigned" if not explicitly mentioned, so the human editor can assign an owner)
+   - "locator": Exact page or section number (e.g., "p. 1", "p. 2", "Sec 3")
+   - "excerpt": Exact verbatim quote from the document proving this claim`;
 
-Document Content:
-${rawContent}`;
+    const parts: any[] = [{ text: systemInstruction }];
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-              responseMimeType: 'application/json',
-            },
-          }),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        const textOutput = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (textOutput) {
-          const parsedClaims: CandidateClaim[] = JSON.parse(textOutput);
-          return NextResponse.json({
-            engine: 'Gemini 2.5 Flash Structured JSON API',
-            claims: parsedClaims,
-          });
-        }
-      }
+    if (base64Data && mimeType === 'application/pdf') {
+      parts.push({
+        inlineData: {
+          mimeType: 'application/pdf',
+          data: base64Data,
+        },
+      });
+    } else {
+      parts.push({
+        text: `Document Content:\n${rawContent}`,
+      });
     }
 
-    // 2. BUILT-IN DETERMINISTIC AI PARSER (Works immediately with zero config)
-    const lines = rawContent
-      .split('\n')
-      .map((l: string) => l.trim())
-      .filter(Boolean);
-
-    const extractedClaims: CandidateClaim[] = [];
-
-    lines.forEach((line: string, idx: number) => {
-      // Skip pure section headers without content
-      if (/^\[Section:[^\]]+\]$/.test(line) || line.startsWith('[Header]')) {
-        return;
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+          },
+        }),
       }
+    );
 
-      // Extract bracketed locator like [p. 1] or [Section: Power / L1]
-      const locatorMatch = line.match(/^\[([^\]]+)\]\s*(.*)$/);
-      const locator = locatorMatch ? locatorMatch[1] : `sec. ${idx + 1}`;
-      const bodyText = locatorMatch ? locatorMatch[2] : line;
+    if (!response.ok) {
+      const errData = await response.json();
+      return NextResponse.json(
+        {
+          error: `Gemini API Error: ${
+            errData?.error?.message || 'Failed to process document'
+          }`,
+        },
+        { status: 500 }
+      );
+    }
 
-      if (bodyText.length < 10) return;
+    const data = await response.json();
+    const textOutput = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
-      // Determine Category
-      let category: CandidateClaim['category'] = 'Decision';
-      const lower = bodyText.toLowerCase();
-      if (
-        lower.includes('warning') ||
-        lower.includes('risk') ||
-        lower.includes('not been tested') ||
-        lower.includes('not been validated') ||
-        lower.includes('blocked')
-      ) {
-        category = 'Risk';
-      } else if (
-        lower.includes('active work') ||
-        lower.includes('in_progress') ||
-        lower.includes('in progress') ||
-        lower.includes('complete') ||
-        lower.includes('open')
-      ) {
-        category = 'Active work';
-      } else if (
-        lower.includes('next action') ||
-        lower.includes('must run') ||
-        lower.includes('confirm')
-      ) {
-        category = 'Next Action';
-      }
+    if (!textOutput) {
+      return NextResponse.json(
+        { error: 'Gemini returned an empty response.' },
+        { status: 500 }
+      );
+    }
 
-      // Extract Owner if mentioned (e.g., "Owner: Vihaan Kunder")
-      const ownerMatch = bodyText.match(/Owner:\s*([^.,;\n]+)/i);
-      const owner = ownerMatch ? ownerMatch[1].trim() : 'Unassigned';
+    const parsed = JSON.parse(textOutput);
 
-      // Clean up claim summary
-      const cleanClaim = bodyText
-        .replace(/^(Decision:|Active work:|WARNING:|Risk:)\s*/i, '')
-        .trim();
+    const summary: string =
+      parsed.summary || 'General summary generated by Gemini 3.5 Flash-Lite.';
 
-      extractedClaims.push({
-        category,
-        claim: cleanClaim,
-        owner,
-        locator,
-        excerpt: bodyText,
-      });
-    });
+    const sections: DocumentSection[] = Array.isArray(parsed.sections)
+      ? parsed.sections.map((sec: any, idx: number) => ({
+          id: `sec-${Date.now()}-${idx}`,
+          title: sec.title || `Part ${idx + 1}`,
+          summary: sec.summary || '',
+          locator: sec.locator || `Part ${idx + 1}`,
+        }))
+      : [];
+
+    const claims: CandidateClaim[] = Array.isArray(parsed.claims)
+      ? parsed.claims
+      : [];
 
     return NextResponse.json({
-      engine: 'RelayMap Structured Schema Extractor',
-      claims: extractedClaims,
+      engine: 'Gemini 3.5 Flash-Lite',
+      summary,
+      sections,
+      claims,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Extraction error:', error);
     return NextResponse.json(
-      { error: 'Failed to extract structured claims.' },
+      { error: `Failed to extract document: ${error.message}` },
       { status: 500 }
     );
   }
